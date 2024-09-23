@@ -1,0 +1,66 @@
+
+
+units         lj
+atom_style    full
+dimension     3
+boundary      p p p
+neighbor      1.0 bin
+neigh_modify  one 8000 every 1
+kspace_style  pppm 1.0e-4
+dielectric    1.0
+
+# data file with coacervate slab in the center of the box, crowders and salt on either side
+read_data     start.data 
+
+bond_style    fene
+bond_coeff    * 30.0 1.5 1.0 1.0
+special_bonds lj 0.0 1.0 1.0 coul 1.0 1.0 1.0
+
+set           type 1 charge 1.0
+set           type 3 charge 1.0
+set           type 2 charge -1.0
+set           type 4 charge -1.0
+
+pair_style    lj/cut/coul/long 1.12 8.0
+pair_coeff    * * 1.0 1.0
+pair_coeff    * 5 1.0 1.0 1.12
+
+variable      Temp equal 1.0
+variable      Press equal 0.0
+variable      dt equal 0.01
+variable      Tdamping equal 100*${dt}
+variable      velSeed equal 987457
+
+thermo        1000
+thermo_style  custom step temp ebond epair ke etotal enthalpy vol press spcpu
+restart       1000000 restart
+restart       10000 restart1 restart2
+
+velocity      all create ${Temp} ${velSeed}
+timestep      ${dt}
+
+
+group         poly type 1 2
+fix           freeze poly setforce 0.0 0.0 0.0
+minimize      1.0e-4  1.0e-6  1000 10000
+unfix         freeze
+
+
+fix           nvtanneal all nvt temp 0.8  1.0 ${Tdamping}
+fix           stabilize all momentum 5 linear 1 1 1
+run           10000
+unfix         nvtanneal
+reset_timestep 0
+
+dump          1 all custom 5000 traj.* id type xu yu zu  vx vy vz
+fix           stabilize all momentum 5 linear 1 1 1
+fix           nvt1 all nvt temp ${Temp} ${Temp} ${Tdamping}
+run           25000
+
+balance       0.9 shift y 20 1.0
+fix           bal all balance 500000 0.9 shift y 20 1.0
+
+run           10000000
+write_data    final.data nocoeff nofix
+
+
